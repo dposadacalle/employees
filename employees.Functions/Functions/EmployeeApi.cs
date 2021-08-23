@@ -7,29 +7,60 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Microsoft.WindowsAzure.Storage.Table;
+using employees.Common.Models;
+using employees.Functions.Entities;
+using employees.Common.Responses;
 
 namespace employees.Functions.Functions
 {
     public static class EmployeeApi
     {
-        [FunctionName("EmployeeApi")]
-        public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
+        /*
+            Daniel Posada
+            Date: 22/08/2021
+            Methodo: POST
+            Description: 
+               - Endpoint for create a new Entry with post
+        */
+        [FunctionName("CreateEntry")]
+        public static async Task<IActionResult> CreateEntry( 
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "employee")] HttpRequest req,
+            [Table("entry", Connection = "AzureWebJobsStorage")] CloudTable entryTable, 
             ILogger log)
         {
-            log.LogInformation("C# HTTP trigger function processed a request.");
-
-            string name = req.Query["name"];
+            log.LogInformation("Receive a new Entry for him Employee.");
 
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            name = name ?? data?.name;
 
-            string responseMessage = string.IsNullOrEmpty(name)
-                ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-                : $"Hello, {name}. This HTTP triggered function executed successfully.";
+            Entry entry = JsonConvert.DeserializeObject<Entry>(requestBody);
 
-            return new OkObjectResult(responseMessage);
+            EntryEntity entryEntity = new EntryEntity
+            {
+                IdEmpleo = entry.IdEmpleo,
+                ETag = "*",
+                FechaEntrada = DateTime.UtcNow,
+                FechaSalida = DateTime.UtcNow,
+                Tipo = entry.Tipo,
+                Consolidado = false,
+                PartitionKey = "ENTRY",
+                RowKey = Guid.NewGuid().ToString()
+            };
+
+            TableOperation addOperation = TableOperation.Insert(entryEntity);
+            await entryTable.ExecuteAsync(addOperation);
+
+            string message = "New Entry stored in table.";
+            log.LogInformation(message);
+
+            return new OkObjectResult(new Response
+            {
+                IsSucess = true, 
+                Message = message, 
+                Result = entryEntity
+            });
+
         }
+
     }
 }
